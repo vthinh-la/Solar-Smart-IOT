@@ -15,6 +15,20 @@
 
 ---
 
+### 🎬 Video Minh Họa Vận Hành Thực Nghiệm (Live Demonstration)
+
+<p align="center">
+  <img src="docs/images/solar_iot_demo.gif" width="360" alt="Solar IoT Live Demonstration" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" /><br>
+  <em>Thực nghiệm đo đạc công suất tấm pin PV thực tế dưới nắng tự nhiên (19.9V - 0.42A &rarr; 8.29W) và thao tác chuyển trang LCD bằng cụm 4 phím bấm.</em>
+</p>
+
+<p align="center">
+  🎥 <a href="media/solar_iot_hardware_live_test.mp4"><b>Video 1: Trực Tiếp Vận Hành Bo Mạch & Đo Công Suất Nắng Thực Tế (MP4)</b></a> &nbsp;|&nbsp;
+  📲 <a href="media/solar_iot_cloud_and_shading_test.mp4"><b>Video 2: Kiểm Chứng Cảm Biến Ngoài Trời, Che Tấm Pin & Đồng Bộ App E-Ra (MP4)</b></a>
+</p>
+
+---
+
 ### 📸 Hình Ảnh Trạm Đo Thực Tế & Giao Diện Giám Sát
 
 | Bo Mạch Điều Khiển Hoàn Chỉnh | Trạm Đo Khi Đang Hoạt Động | Cụm Cảm Biến Môi Trường Ngoài Trời |
