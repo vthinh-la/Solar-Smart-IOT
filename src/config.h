@@ -65,9 +65,11 @@
 // 🌐 CẤU HÌNH CLOUD IOT E-RA & WIFI
 // ==========================================
 #define DEFAULT_MQTT_HOST "mqtt1.eoh.io"
-#define ERA_AUTH_TOKEN "14eeaf48-a3b5-4828-8a80-4b60bb36a972"
-#define WIFI_SSID "ABC"
-#define WIFI_PASS "123456789tn@"
+#ifndef ERA_AUTH_TOKEN
+#define ERA_AUTH_TOKEN "YOUR_ERA_AUTH_TOKEN" // Nhập Auth Token từ tài khoản E-Ra Cloud
+#endif
+#define WIFI_SSID "YOUR_WIFI_SSID"           // Nhập tên mạng Wi-Fi 2.4 GHz
+#define WIFI_PASS "YOUR_WIFI_PASSWORD"       // Nhập mật khẩu Wi-Fi
 
 // Virtual Pins (Chân ảo trên E-Ra Dashboard)
 #define VPIN_SOLAR_VOLT V0 // Điện áp Solar (V)

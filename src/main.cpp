@@ -3,10 +3,11 @@
 #include "core/sensor_manager.h"
 #include "ui/button_handler.h"
 #include "ui/display_manager.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 
 #define ERA_DEBUG
-#define DEFAULT_MQTT_HOST "mqtt1.eoh.io"
-#define ERA_AUTH_TOKEN "14eeaf48-a3b5-4828-8a80-4b60bb36a972"
 #include <ERa.hpp>
 
 SensorManager sensorManager;
@@ -15,15 +16,18 @@ DisplayManager displayManager;
 
 unsigned long lastSensorRead = 0;
 unsigned long lastSerialPrint = 0;
-unsigned long lastEraSync = 0;
+QueueHandle_t eraDataQueue = nullptr;
+volatile bool eraOnline = false;
 
 /* Callback khi kết nối thành công tới E-Ra */
 ERA_CONNECTED() {
+    eraOnline = true;
     ERA_LOG(ERA_PSTR("ERa"), ERA_PSTR("✅ ERa Cloud Connected Successfully!"));
 }
 
 /* Callback khi mất kết nối tới E-Ra */
 ERA_DISCONNECTED() {
+    eraOnline = false;
     ERA_LOG(ERA_PSTR("ERa"), ERA_PSTR("⚠️ ERa Cloud Disconnected!"));
 }
 
@@ -48,7 +52,42 @@ void sendDataToERa(const SolarData &data) {
     ERa.virtualWrite(VPIN_IRRADIANCE, data.irradiance_wm2);
 
     // Hiệu suất chuyển đổi quang điện
-    ERa.virtualWrite(VPIN_EFFICIENCY, data.efficiency_pct);
+    // Publish V8 immediately, including when the value stays at 0 in low light.
+    ERa.virtualWrite(VPIN_EFFICIENCY, data.efficiency_pct, true);
+    Serial.printf("[ERa] V8 efficiency: %.2f %% (%s)\n",
+                  data.efficiency_pct,
+                  data.efficiency_valid ? "valid" : "low light");
+}
+
+// WiFi and MQTT waits stay off the task that updates sensors and the LCD.
+void eraTask(void *parameter) {
+    (void)parameter;
+    // Load both WiFi networks saved by ERa before applying firmware defaults.
+    ERa.setPersistent(true);
+    // Let ESP32 associate by SSID. A missed scan must not prevent WiFi 2.
+    ERa.setScanWiFi(false);
+    ERa.setNonBlocking(true);
+    ERa.begin(WIFI_SSID, WIFI_PASS);
+
+    Serial.printf("[ERa] Primary WiFi: %s | Backup WiFi: %s\n",
+                  ERaConfig.ssid,
+                  ERaConfig.hasBackup ? ERaConfig.backupSSID : "not configured");
+
+    unsigned long lastSync = millis();
+    for (;;) {
+        ERa.run();
+        eraOnline = ERa.connected();
+
+        const unsigned long now = millis();
+        if (now - lastSync >= INTERVAL_ERA_SYNC_MS) {
+            lastSync = now;
+            SolarData snapshot;
+            if (xQueuePeek(eraDataQueue, &snapshot, 0) == pdTRUE) {
+                sendDataToERa(snapshot);
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
 void printSerialDebug(const SolarData &data) {
@@ -101,7 +140,7 @@ void printSerialDebug(const SolarData &data) {
 
     // Cloud Status
     Serial.print(F("🌐 E-Ra Cloud : "));
-    Serial.println(ERa.connected() ? F("ONLINE") : F("CONNECTING..."));
+    Serial.println(eraOnline ? F("ONLINE") : F("OFFLINE"));
 
     Serial.println(F("-----------------------------------------"));
 }
@@ -121,16 +160,16 @@ void setup() {
     displayManager.begin();
 
     // Cấu hình quét WiFi & Khởi động kết nối E-Ra Cloud
-    ERa.setScanWiFi(true);
-    ERa.begin(WIFI_SSID, WIFI_PASS);
+    eraDataQueue = xQueueCreate(1, sizeof(SolarData));
+    if (eraDataQueue == nullptr ||
+        xTaskCreatePinnedToCore(eraTask, "ERa", 12288, nullptr, 1, nullptr, 0) != pdPASS) {
+        Serial.println(F("[ERa] Cannot start cloud task; local display remains active"));
+    }
 
     Serial.println(F("[SYSTEM] Initialization Complete!\n"));
 }
 
 void loop() {
-    // 0. Duy trì kết nối và giao tiếp E-Ra Cloud
-    ERa.run();
-
     // 1. Quét phím điều khiển liên tục (Real-time check)
     ButtonEvent evt = buttonHandler.checkEvents();
     if (evt != BTN_EVT_NONE) {
@@ -161,18 +200,16 @@ void loop() {
     if (currentMillis - lastSensorRead >= INTERVAL_SENSOR_READ_MS) {
         lastSensorRead = currentMillis;
         sensorManager.readAll();
+        if (eraDataQueue != nullptr) {
+            SolarData snapshot = sensorManager.getData();
+            xQueueOverwrite(eraDataQueue, &snapshot);
+        }
     }
 
     // 3. Cập nhật giao diện màn hình LCD
     displayManager.update(sensorManager.getData());
 
-    // 4. Định kỳ đẩy dữ liệu lên E-Ra Cloud
-    if (currentMillis - lastEraSync >= INTERVAL_ERA_SYNC_MS) {
-        lastEraSync = currentMillis;
-        sendDataToERa(sensorManager.getData());
-    }
-
-    // 5. In thông tin debug ra cổng Serial Monitor
+    // 4. In thông tin debug ra cổng Serial Monitor
     if (currentMillis - lastSerialPrint >= INTERVAL_SERIAL_DEBUG_MS) {
         lastSerialPrint = currentMillis;
         printSerialDebug(sensorManager.getData());
